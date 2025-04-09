@@ -4,25 +4,26 @@
     "description": "A lightweight Node.js server for rendering Markdown files with template injection.",
     "main": "server.js",
     "scripts": {
-      "start": "node server.js",
-      "test": "echo \"Error: no test specified\" && exit 1"
+        "start": "node server.js",
+        "test": "echo \"Error: no test specified\" && exit 1"
     },
     "keywords": [
-      "markdown",
-      "static",
-      "blog",
-      "server",
-      "node",
-      "express",
-      "katex",
-      "highlight.js"
+        "markdown",
+        "static",
+        "blog",
+        "server",
+        "node",
+        "express",
+        "katex",
+        "highlight.js"
     ],
     "author": "",
     "license": "ISC",
     "dependencies": {
-      "express": "^4.19.2",   
-      "highlight.js": "^11.9.0", 
-      "katex": "^0.16.10",   
-      "marked": "^12.0.2"     
+        "express": "^4.19.2",
+        "highlight.js": "^11.11.1",
+        "katex": "^0.16.10",
+        "marked": "^12.0.2",
+        "marked-highlight": "^2.2.1"
     }
-  }
+}

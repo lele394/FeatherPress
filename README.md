@@ -18,7 +18,7 @@ This work is licensed under a [Creative Commons Attribution-NonCommercial-ShareA
 
 *   **Markdown Rendering:** Serves `.md` files from the `./data` directory as HTML pages.
 *   **GitHub Flavored Markdown (GFM):** Supports standard Markdown plus GFM features like tables and fenced code blocks.
-*   **Syntax Highlighting:** Automatic syntax highlighting for fenced code blocks using `highlight.js`.
+*   **Syntax Highlighting:** Automatic syntax highlighting for fenced code blocks using `marked-highlight`.
 *   **LaTeX Support:** Renders inline (`$...$`) and block (`$$...$$`) LaTeX math expressions using KaTeX.
 *   **Raw HTML Passthrough:** Allows embedding raw HTML, including `<script>` and `<style>` tags, directly within Markdown files (use with caution).
 *   **Templating System:**
@@ -70,7 +70,7 @@ project/
 ## File Responsibilities
 
 *   **`server.js`**: Contains all the Node.js/Express logic for routing, file reading, Markdown parsing, template processing, security checks, and serving static assets. This is the core application.
-*   **`package.json`**: Defines the project, its dependencies (`express`, `marked`, `highlight.js`, `katex`), and provides basic scripts (like `npm start`).
+*   **`package.json`**: Defines the project, its dependencies (`express`, `marked`, `marked-highlight`, `katex`), and provides basic scripts (like `npm start`).
 *   **`blacklist.json`**: A JSON array of URL paths or path prefixes (strings ending with `/`) that the server should *refuse* to serve. This prevents accidental exposure of server files, configuration, or directories like `.git`.
 *   **`./data/`**: The **only** place where Markdown files intended as content pages should reside. Subdirectories automatically become URL path segments.
 *   **`./data/**/default.md`**: **Mandatory** index file for each subdirectory within `data`. Served when the user requests the directory path itself (e.g., `/blog` serves `./data/blog/default.md`). Used to list content within that category.
@@ -191,7 +191,7 @@ The server supports a rich set of Markdown features:
 
 1.  **Standard Markdown & GFM:** Headings (`# H1` to `###### H6`), bold (`**bold**`), italics (`*italic*`), links (`[text](/path)` or `[text](URL)`), ordered/unordered lists, blockquotes (`> quote`), tables (GFM style).
 
-2.  **Code Blocks:** Use fenced code blocks with language identifiers for syntax highlighting via `highlight.js`.
+2.  **Code Blocks:** Use fenced code blocks with language identifiers for syntax highlighting via `marked-highlight`.
 
     ````markdown
     ```javascript

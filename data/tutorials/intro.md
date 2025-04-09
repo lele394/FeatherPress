@@ -76,12 +76,6 @@ function toggleAnimation(elementId, className) {
     console.error(`Element with ID #${elementId} not found.`);
   }
 }
-
-// Example usage might be added later in a <script> tag
-// document.addEventListener('DOMContentLoaded', () => {
-//   const btn = document.getElementById('animated-button');
-//   if(btn) btn.addEventListener('click', () => toggleAnimation('animated-button', 'pulse-animation'));
-// });
 ```
 
 **Python Example:**

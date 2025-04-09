@@ -1,0 +1,228 @@
+/*
+ * Markdown Static Blog Server Stylesheet
+ * Color Palette:
+ * --color-background: #222831 (Darkest, main page background)
+ * --color-foreground: #31363F (Slightly lighter, container/element backgrounds)
+ * --color-text:       #76ABAE (Main text color)
+ * --color-highlight:  #EEEEEE (Accents, links, borders, bright text)
+*/
+
+:root {
+    --color-background: #222831;
+    --color-foreground: #31363F;
+    --color-highlight:       #76ABAE;
+    --color-text:  #EEEEEE;
+  
+    /* Optional: Define opacities for borders/accents if needed */
+    --highlight-border-color: hsla(0, 0%, 93%, 0.3); /* #EEEEEE with 30% opacity */
+    --text-muted-color: rgba(118, 171, 174, 0.6); /* #76ABAE with 60% opacity */
+  }
+  
+  /* --- Global Reset & Body --- */
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    line-height: 1.7;
+    margin: 0;
+    padding: 0;
+    background-color: var(--color-background);
+    color: var(--color-text);
+    font-size: 16px; /* Base font size */
+  }
+  
+  /* --- Main Container --- */
+  .container {
+    max-width: 850px; /* Slightly wider for better code block display */
+    margin: 2.5em auto;
+    padding: 1.5em 2.5em;
+    background-color: var(--color-foreground);
+    border-radius: 8px; /* Subtle rounding */
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3); /* Darker shadow for contrast */
+  }
+  
+  /* --- Typography --- */
+  h1, h2, h3, h4, h5, h6 {
+    margin-top: 1.8em;
+    margin-bottom: 0.6em;
+    line-height: 1.3;
+    color: var(--color-highlight); /* Make headings stand out */
+    font-weight: 600;
+  }
+  
+  h1 {
+    border-bottom: 2px solid var(--highlight-border-color);
+    padding-bottom: 0.4em;
+    font-size: 2.2em;
+  }
+  
+  h2 { font-size: 1.8em; }
+  h3 { font-size: 1.5em; }
+  h4 { font-size: 1.2em; }
+  h5 { font-size: 1.1em; }
+  h6 { font-size: 1.0em; color: var(--color-text); } /* Less emphasis on h6 */
+  
+  p {
+    margin-bottom: 1.2em;
+  }
+  
+  a {
+    color: var(--color-highlight);
+    text-decoration: none;
+    transition: color 0.2s ease, text-decoration 0.2s ease;
+  }
+  
+  a:hover {
+    color: var(--color-highlight); /* Keep highlight color */
+    text-decoration: underline;
+  }
+  
+  /* --- Navigation --- */
+  nav {
+    margin-bottom: 1.5em;
+    padding-bottom: 1em;
+    border-bottom: 1px solid var(--highlight-border-color);
+  }
+  
+  nav a {
+    margin-right: 1.5em;
+    font-weight: 500;
+  }
+  
+  /* --- Code Blocks & Inline Code --- */
+  pre {
+    background-color: var(--color-background); /* Contrast with container */
+    padding: 1.2em;
+    border-radius: 5px;
+    overflow-x: auto; /* Handle long code lines */
+    margin: 1.5em 0;
+    border: 1px solid var(--color-foreground); /* Subtle border */
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.2); /* Inner shadow */
+    font-size: 0.95em; /* Slightly smaller code font */
+  }
+  
+  /* Target code specifically within pre for base color before highlight.js */
+  pre code {
+    color: var(--color-text); /* Base code color */
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+    border: none;
+  }
+  
+  /* Inline code */
+  code {
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
+    background-color: var(--color-background); /* Match pre background */
+    color: var(--color-highlight); /* Make inline code stand out */
+    padding: 0.25em 0.5em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    border: 1px solid var(--color-foreground);
+  }
+  
+  /* Avoid double background/border for code inside pre */
+  pre > code {
+    background-color: transparent;
+    border: none;
+    color: inherit; /* Let highlight.js handle coloring */
+    padding: 0;
+  }
+  
+  
+  /* --- Blockquotes --- */
+  blockquote {
+    border-left: 5px solid var(--color-highlight);
+    padding: 0.8em 1.5em;
+    margin: 1.5em 0;
+    margin-left: 0; /* Reset default margin */
+    margin-right: 0; /* Reset default margin */
+    color: inherit; /* Use standard text color */
+    background-color: rgba(49, 54, 63, 0.3); /* Semi-transparent foreground */
+    border-radius: 0 5px 5px 0; /* Round corners opposite border */
+  }
+  
+  blockquote p {
+    margin-bottom: 0.5em; /* Reduce paragraph spacing inside quotes */
+  }
+  
+  blockquote p:last-child {
+    margin-bottom: 0;
+  }
+  
+  
+  /* --- Tables --- */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1.5em 0;
+    border: 1px solid var(--highlight-border-color); /* Outer border */
+  }
+  
+  th, td {
+    border: 1px solid var(--highlight-border-color);
+    padding: 10px 12px;
+    text-align: left;
+  }
+  
+  th {
+    background-color: var(--color-background); /* Match pre background */
+    color: var(--color-highlight);
+    font-weight: 600;
+  }
+  
+  td {
+    vertical-align: top;
+  }
+  
+  
+  /* --- Images --- */
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block; /* Prevents extra space below image */
+    margin: 1em auto; /* Center images with margin */
+    border-radius: 4px; /* Slight rounding */
+  }
+  
+  /* --- Horizontal Rule --- */
+  hr {
+    border: 0;
+    height: 1px;
+    background: var(--highlight-border-color);
+    margin: 2.5em 0;
+  }
+  
+  /* --- KaTeX --- */
+  .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 0.5em 0; /* Add some padding */
+  }
+  
+  /* --- Footer --- */
+  /* Add a footer element wrapper in template/footer.md for this to apply */
+  footer {
+    margin-top: 3em;
+    padding-top: 1.5em;
+    border-top: 1px solid var(--highlight-border-color);
+    text-align: center;
+    font-size: 0.9em;
+    color: var(--text-muted-color);
+  }
+
+  
+  
+  /* --- Highlight.js Theme Override (Optional) --- */
+  /* You might need to adjust these depending on the default theme loaded */
+  /* .hljs {
+    background: var(--color-background) !important;
+    color: var(--color-text) !important;
+  }
+  .hljs-comment {
+    color: var(--text-muted-color) !important;
+    font-style: italic;
+  }
+  .hljs-keyword {
+   color: var(--color-highlight) !important;
+   font-weight: bold;
+  } */

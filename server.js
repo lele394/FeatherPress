@@ -1,14 +1,48 @@
+/* ==================================
+ * Markdown Static Blog Server
+ * ================================== */
+
+// --- Core Dependencies ---
 const express = require('express');
-const fs = require('fs').promises;
+const fs = require('fs').promises; // Use promise-based fs for async/await
 const path = require('path');
-const { marked, Renderer } = require('marked');
-const hljs = require('highlight.js');
+
+// --- Markdown & Syntax Highlighting ---
+const { Marked, Renderer } = require('marked');     // Use Marked class for instances
+const { markedHighlight } = require("marked-highlight"); // Extension for highlighting
+const hljs = require('highlight.js/lib/core');       // Core highlight.js engine
+// --- ^^ Yes, hljs is still needed! `marked-highlight` uses it (or another engine)
+//     to actually perform the syntax analysis and generate highlighted HTML.
+//     We need to load the core and register the languages we want hljs to support.
+
+// --- LaTeX Rendering ---
 const katex = require('katex');
 
+/* ==================================
+ * Highlight.js Language Registration
+ * ================================== */
+// Register the languages you want highlight.js to be able to process.
+// Add or remove languages as needed for your content.
+hljs.registerLanguage('javascript', require('highlight.js/lib/languages/javascript'));
+hljs.registerLanguage('python', require('highlight.js/lib/languages/python'));
+hljs.registerLanguage('xml', require('highlight.js/lib/languages/xml')); // For HTML/XML
+hljs.registerLanguage('css', require('highlight.js/lib/languages/css'));
+hljs.registerLanguage('json', require('highlight.js/lib/languages/json'));
+hljs.registerLanguage('bash', require('highlight.js/lib/languages/bash')); // Shell/Bash
+hljs.registerLanguage('markdown', require('highlight.js/lib/languages/markdown'));
+// Example: hljs.registerLanguage('java', require('highlight.js/lib/languages/java'));
+
+
+/* ==================================
+ * Express App Setup
+ * ================================== */
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- Configuration ---
+
+/* ==================================
+ * Configuration Constants
+ * ================================== */
 const DATA_DIR = path.resolve(__dirname, 'data');
 const TEMPLATE_DIR = path.join(__dirname, 'template');
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -17,12 +51,23 @@ const HEADER_PATH = path.join(TEMPLATE_DIR, 'header.md');
 const FOOTER_PATH = path.join(TEMPLATE_DIR, 'footer.md');
 const LANDING_PAGE_PATH = path.join(PUBLIC_DIR, 'landing.md');
 const NOT_FOUND_PAGE_PATH = path.join(PUBLIC_DIR, '404.html');
-const CATEGORY_INDEX_FILE = 'default.md'; // Name of the index file for categories
+const CATEGORY_INDEX_FILE = 'default.md'; // Filename for category listings
+const CSS_STYLESHEET = 'style_2.css';     // Specific CSS filename to use
 
-let forbiddenRoutes = new Set();
 
-// --- Helper Functions (loadBlacklist, processCustomTemplates, processLatex, isBlacklisted - unchanged) ---
+/* ==================================
+ * Global Variables
+ * ================================== */
+let forbiddenRoutes = new Set(); // Stores blacklisted URL paths/prefixes
 
+
+/* ==================================
+ * Helper Functions
+ * ================================== */
+
+/**
+ * Loads the blacklist from blacklist.json into the forbiddenRoutes Set.
+ */
 async function loadBlacklist() {
     try {
         const data = await fs.readFile(BLACKLIST_PATH, 'utf8');
@@ -31,139 +76,178 @@ async function loadBlacklist() {
         forbiddenRoutes = new Set(routes);
         console.log(`Blacklist loaded: ${routes.length} rules.`);
     } catch (error) {
-        console.error('Error loading blacklist.json:', error.message);
+        // Log error but continue, potentially insecurely without blacklist
+        console.error(`Error loading blacklist.json: ${error.message}. Server starting without blacklist rules.`);
         forbiddenRoutes = new Set();
     }
 }
 
+/**
+ * Processes custom template syntax: !{{template_name}{JSON_data}}
+ * Replaces the tag with the rendered Markdown content of the template file.
+ */
 async function processCustomTemplates(markdownContent, basePathForTemplates) {
-    // Regex slightly adjusted: ensures the capture group starts *after* the {
-    // It still captures everything until the final non-greedy }}
-    const templateRegex = /!\{\{([^}]+?)\}\{(.*?)\}\}/gs; // Note: Removed the extra '}' between capture groups in the regex pattern itself.
+    const templateRegex = /!\{\{([^}]+?)\}\{(.*?)\}\}/gs;
     let processedContent = markdownContent;
     let match;
 
-    // Keep processing until no more template tags are found
     while ((match = templateRegex.exec(processedContent)) !== null) {
-        // Groups:
-        // match[0]: Full match !{{name}{json}}
-        // match[1]: Template name (e.g., "custom")
-        // match[2]: JSON content string (e.g., ' "name": "Blog Reader" ') - note potential surrounding whitespace
         const [fullMatch, templateName, rawJsonDataString] = match;
         let templateData = {};
-
-        // Trim the captured JSON string FIRST
         const jsonDataString = rawJsonDataString.trim();
-
-        // Add debugging to see *exactly* what's being parsed
-        console.log(`DEBUG: Template Tag Found: ${fullMatch}`);
-        console.log(`DEBUG: Captured Template Name: >>${templateName}<<`);
-        console.log(`DEBUG: Captured Raw JSON String: >>${rawJsonDataString}<<`);
-        console.log(`DEBUG: Trimmed JSON String for Parsing: >>${jsonDataString}<<`);
-
+        // Basic Debugging
+        // console.log(`DEBUG: Template Tag Found: ${fullMatch}`);
+        // console.log(`DEBUG: Trimmed JSON String for Parsing: >>${jsonDataString}<<`);
 
         try {
-            // Allow empty JSON object {} or completely empty content "" after trimming
+            // Parse JSON data if provided
             if (jsonDataString !== '{}' && jsonDataString !== '') {
-                 // Prepend and append braces if the trimmed string isn't already enclosed
-                 // This makes the syntax slightly more flexible: !{{custom "name":"value"}} is also possible
-                 let stringToParse = jsonDataString;
+                let stringToParse = jsonDataString;
                  if (!stringToParse.startsWith('{') || !stringToParse.endsWith('}')) {
-                    stringToParse = `{${stringToParse}}`;
-                    console.log(`DEBUG: Auto-adding braces: >>${stringToParse}<<`);
+                    stringToParse = `{${stringToParse}}`; // Auto-add braces if needed
                  }
                  templateData = JSON.parse(stringToParse);
-            } else if (jsonDataString === '{}') {
-                // Handle explicit empty object
-                templateData = {};
-                 console.log(`DEBUG: Parsing explicit empty object {}`);
             } else {
-                 // Handle case where it was just whitespace between outer braces: !{{custom{   }}}
-                 console.log(`DEBUG: Ignoring empty or whitespace-only JSON content.`);
-                 templateData = {};
+                templateData = {}; // Handle empty {} or whitespace
             }
-
         } catch (e) {
-            console.warn(`Warning: Invalid JSON in template tag ${fullMatch}. Content: >>${jsonDataString}<<. Error: ${e.message}. Skipping injection.`);
-            processedContent = processedContent.replace(fullMatch, `<!-- Invalid JSON in template ${templateName}: ${e.message} -->`);
-            templateRegex.lastIndex = 0; // Reset regex index after replacement
-            continue; // Move to next potential match
+            console.warn(`Warning: Invalid JSON in template tag ${fullMatch}. Content: >>${jsonDataString}<<. Error: ${e.message}. Skipping.`);
+            processedContent = processedContent.replace(fullMatch, `<!-- Invalid JSON: ${e.message} -->`);
+            templateRegex.lastIndex = 0; continue;
         }
 
         const templateFilePath = path.join(TEMPLATE_DIR, `${templateName}.md`);
-
         try {
             let templateContent = await fs.readFile(templateFilePath, 'utf8');
-
-            // Recursively process templates within the loaded template first
+            // Recursively process templates within the loaded template FIRST
             templateContent = await processCustomTemplates(templateContent, templateFilePath);
-
-            // Replace placeholders {{key}} in the template content
+            // Replace placeholders {{key}}
             for (const key in templateData) {
                 const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
                 templateContent = templateContent.replace(placeholder, templateData[key]);
             }
-
-            // Replace the original template tag with the processed template content
+            // Replace the original tag
             processedContent = processedContent.replace(fullMatch, templateContent);
-            templateRegex.lastIndex = 0; // Reset regex index after replacement
-
+            templateRegex.lastIndex = 0;
         } catch (error) {
-            // Handle template file not found errors specifically
-            if (error.code === 'ENOENT') {
-                 console.warn(`Warning: Template file not found: ${templateFilePath}. Skipping injection for ${fullMatch}.`);
-                 processedContent = processedContent.replace(fullMatch, `<!-- Template file ${templateName}.md not found -->`);
-            } else {
-                console.warn(`Warning: Error reading template file ${templateFilePath}: ${error.message}. Skipping injection for ${fullMatch}.`);
-                processedContent = processedContent.replace(fullMatch, `<!-- Error reading template ${templateName}.md -->`);
-            }
-             templateRegex.lastIndex = 0; // Reset regex index after replacement
+            const errorMsg = error.code === 'ENOENT' ? 'not found' : `read error (${error.message})`;
+            console.warn(`Warning: Template file ${templateName}.md ${errorMsg}. Skipping injection.`);
+            processedContent = processedContent.replace(fullMatch, `<!-- Template ${templateName}.md ${errorMsg} -->`);
+            templateRegex.lastIndex = 0;
         }
     }
-
     return processedContent;
 }
 
-
+/**
+ * Processes $...$ and $$...$$ LaTeX delimiters using KaTeX server-side.
+ * Returns HTML string with rendered math.
+ */
 function processLatex(markdownContent) {
-    // (Code identical to previous version)
+    // Inline LaTeX: $...$ (non-greedy match)
     markdownContent = markdownContent.replace(/\$(.+?)\$/g, (match, latex) => {
-        try { return katex.renderToString(latex, { throwOnError: false, displayMode: false }); }
-        catch (e) { console.warn(`KaTeX inline error: ${e.message}`); return `<code>${latex}</code>`; }
+        try {
+            return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: false });
+        } catch (e) {
+            console.warn(`KaTeX inline rendering error: ${e.message}`);
+            return `<code>${latex}</code> (KaTeX Error)`;
+        }
     });
+    // Block LaTeX: $$...$$ (non-greedy match, handles multiline)
      markdownContent = markdownContent.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
-        try { return katex.renderToString(latex, { throwOnError: false, displayMode: true }); }
-        catch (e) { console.warn(`KaTeX block error: ${e.message}`); return `<pre><code>${latex}</code></pre>`; }
+        try {
+            return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
+        } catch (e) {
+            console.warn(`KaTeX block rendering error: ${e.message}`);
+            return `<pre><code>${latex}</code></pre><p>(KaTeX Error)</p>`;
+        }
     });
     return markdownContent;
 }
 
+/**
+ * Checks if a given request path is forbidden based on the loaded blacklist.
+ */
 function isBlacklisted(reqPath) {
-    // (Code identical to previous version)
-    if (forbiddenRoutes.has(reqPath)) return true;
+    if (forbiddenRoutes.has(reqPath)) {
+        return true;
+    }
+    // Check for prefix blacklist (e.g., "/node_modules/")
     for (const forbidden of forbiddenRoutes) {
-        if (forbidden.endsWith('/') && reqPath.startsWith(forbidden)) return true;
+        if (forbidden.endsWith('/') && reqPath.startsWith(forbidden)) {
+            return true;
+        }
     }
     return false;
 }
 
-// --- Centralized Markdown Rendering Function (renderMarkdownPage - unchanged) ---
+
+/* ==================================
+ * marked-highlight Setup
+ * ================================== */
+
+/**
+ * Async function to perform syntax highlighting using the configured hljs instance.
+ * This function is passed to the marked-highlight extension.
+ */
+const highlightCode = async (code, lang) => {
+    const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext'; // Detect or fallback
+    console.log(`Highlighting attempt (marked-highlight): lang='${language}' (original: '${lang || 'none'}')`);
+    try {
+        // Use the configured hljs instance
+        const result = hljs.highlight(code, { language: language, ignoreIllegals: true });
+        console.log(`Highlighting successful for lang='${language}'`);
+        return result.value; // Return highlighted HTML
+    } catch (error) {
+        console.error(`Highlight.js server-side error via marked-highlight (lang: ${language}): ${error}`);
+        // Fallback: return escaped plain code on error
+        return code.replace(/</g, "<").replace(/>/g, ">");
+    }
+};
+
+/**
+ * Instantiate the marked-highlight extension.
+ */
+const highlightExtension = markedHighlight({
+    langPrefix: 'hljs language-', // CSS class prefix for styling (matches common themes)
+    highlight: highlightCode,     // The async function defined above
+    async: true                   // Tell marked-highlight the function is async
+});
+
+
+/* ==================================
+ * Main Markdown Rendering Function
+ * ================================== */
+
+/**
+ * Reads, processes (templates, LaTeX), parses (Markdown), and renders a full HTML page.
+ * Uses an instance of Marked configured with marked-highlight.
+ */
 async function renderMarkdownPage(markdownFilePath, reqPath) {
     try {
-        // (Code identical to previous version)
         const mdFileDir = path.dirname(markdownFilePath);
+
+        // --- Read Content Files ---
         const [headerMd, footerMd, mainMd] = await Promise.all([
-            fs.readFile(HEADER_PATH, 'utf8').catch(() => ''),
+            fs.readFile(HEADER_PATH, 'utf8').catch(() => ''), // Gracefully handle missing header/footer
             fs.readFile(FOOTER_PATH, 'utf8').catch(() => ''),
-            fs.readFile(markdownFilePath, 'utf8')
+            fs.readFile(markdownFilePath, 'utf8') // Let error propagate if main file is missing
         ]);
 
+        // --- Pre-processing Steps ---
+        // 1. Process custom templates (Runs recursively)
         let processedMainMd = await processCustomTemplates(mainMd, markdownFilePath);
         const processedHeaderMd = await processCustomTemplates(headerMd, HEADER_PATH);
         const processedFooterMd = await processCustomTemplates(footerMd, FOOTER_PATH);
+
+        // 2. Combine all markdown parts
         let fullMarkdown = `${processedHeaderMd}\n\n${processedMainMd}\n\n${processedFooterMd}`;
+
+        // 3. Process LaTeX math delimiters server-side
         fullMarkdown = processLatex(fullMarkdown);
 
+        // --- Markdown Parsing Setup ---
+        // 4. Define Renderer for handling relative asset paths
         const renderer = new Renderer();
         renderer.image = (href, title, text) => {
             let resolvedHref = href;
@@ -173,9 +257,9 @@ async function renderMarkdownPage(markdownFilePath, reqPath) {
                      if (absoluteImagePath.startsWith(DATA_DIR) || absoluteImagePath.startsWith(PUBLIC_DIR)) {
                         const serverRelativePath = path.relative(__dirname, absoluteImagePath);
                         resolvedHref = path.join('/assets', serverRelativePath).replace(/\\/g, '/');
-                     } else { console.warn(`Image path escape: ${href}`); resolvedHref = '#'; }
+                     } else { console.warn(`Image path escape prevented: ${href}`); resolvedHref = '#'; }
                 }
-            } catch(e){ console.error("Err img path:", e); resolvedHref = '#';}
+            } catch(e){ console.error("Error resolving image path:", href, e); resolvedHref = '#';}
              return Renderer.prototype.image.call(renderer, resolvedHref, title, text);
         };
          renderer.link = (href, title, text) => {
@@ -187,26 +271,41 @@ async function renderMarkdownPage(markdownFilePath, reqPath) {
                     if (absoluteLinkPath.startsWith(DATA_DIR) || absoluteLinkPath.startsWith(PUBLIC_DIR)) {
                          const serverRelativePath = path.relative(__dirname, absoluteLinkPath);
                          resolvedHref = path.join('/assets', serverRelativePath).replace(/\\/g, '/');
-                    } else { console.warn(`Asset link path escape: ${href}`); resolvedHref = '#'; }
+                    } else { console.warn(`Asset link path escape prevented: ${href}`); resolvedHref = '#'; }
                 }
-            } catch(e){ console.error("Err link path:", e); resolvedHref = '#';}
+            } catch(e){ console.error("Error resolving asset link path:", href, e); resolvedHref = '#';}
             return Renderer.prototype.link.call(renderer, resolvedHref, title, text);
         };
 
-        marked.setOptions({ renderer, highlight: function (code, lang) { /* ... */ }, /* other options */ });
-         marked.setOptions({
-             renderer: renderer,
-             highlight: function (code, lang) {
-                const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-                try { return hljs.highlight(code, { language, ignoreIllegals: true }).value; }
-                catch (error) { console.error(`Highlight err: ${error}`); return hljs.highlight(code, { language: 'plaintext', ignoreIllegals: true }).value; }
-            },
-            pedantic: false, gfm: true, breaks: false, sanitize: false,
-            smartLists: true, smartypants: false, xhtml: false
-        });
+        // 5. Create a Marked instance with extensions and options for this request
+        const markedInstance = new Marked(
+            highlightExtension, // Apply the configured marked-highlight extension
+            {                 // Pass other standard Marked options
+                renderer: renderer, // Use our custom renderer for paths
+                pedantic: false,
+                gfm: true,
+                breaks: false,
+                sanitize: false,   // IMPORTANT: Ensure content is trusted if false
+                smartLists: true,
+                smartypants: false,
+                xhtml: false
+                // No 'highlight' option needed here - handled by the extension
+            }
+        );
 
-        const htmlContent = marked.parse(fullMarkdown);
-        const pageTitle = path.basename(reqPath) || 'Home';
+        // --- Parsing ---
+        // 6. Parse the final Markdown string to HTML using the configured instance
+        const htmlContent = await markedInstance.parse(fullMarkdown);
+
+        // --- Final HTML Assembly ---
+        // 7. Generate Page Title
+        let pageTitle = 'Home';
+        if (reqPath && reqPath !== '/') {
+            pageTitle = path.basename(reqPath, '.md') || path.basename(path.dirname(reqPath));
+            pageTitle = pageTitle.charAt(0).toUpperCase() + pageTitle.slice(1);
+        }
+
+        // 8. Construct the complete HTML document string
         const finalHtml = `
 <!DOCTYPE html>
 <html lang="en">
@@ -214,44 +313,50 @@ async function renderMarkdownPage(markdownFilePath, reqPath) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${pageTitle}</title>
-    <link rel="stylesheet" href="/style.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css" integrity="sha384-zh0CIslj+VczCZtlzBcjt5ppRcsAmDnRem7ESsYwWwg3m/OaJ2l4x7YBZl9Kxxib" crossorigin="anonymous">
-
-    <!-- The loading of KaTeX is deferred to speed up page rendering -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js" integrity="sha384-Rma6DA2IPUwhNxmrB/7S3Tno0YY7sFu9WSYMCuulLhIqYSGZ2gKCJWIqhBWqMQfh" crossorigin="anonymous"></script>
-
-    <!-- To automatically render math in text elements, include the auto-render extension: -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js" integrity="sha384-hCXGrW6PitJEwbkoStFjeJxv+fSOOQKOPbJxSfM6G5sWZjAyWhXiTIIAmQqnlLlh" crossorigin="anonymous"
-        onload="renderMathInElement(document.body);"></script>
+    <link rel="stylesheet" href="/${CSS_STYLESHEET}"> 
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.10/dist/katex.min.css" integrity="sha384-wcIxkf4k55goVP2ynZZBOhk+aJxIoCymBbQtxMQ72WA0Lk4//rWwkLVOlvLDBRsd" crossorigin="anonymous"> 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
 </head>
 <body>
     <div class="container">
-        ${htmlContent}
+        ${htmlContent} {/* Inject the parsed Markdown content */}
     </div>
 </body>
 </html>`;
-        return finalHtml;
+        return finalHtml; // Return the complete page
 
     } catch (error) {
-        if (error.code === 'ENOENT' && error.path === markdownFilePath) { throw error; }
-        console.error(`Error rendering page ${markdownFilePath}:`, error);
-        throw new Error('Internal Server Error during rendering');
+        // Handle file not found for the main requested Markdown file
+        if (error.code === 'ENOENT' && error.path === markdownFilePath) {
+            throw error; // Propagate to route handler for 404 response
+        }
+        // Log other unexpected errors during rendering
+        console.error(`Error rendering page for Markdown file ${markdownFilePath}:`, error);
+        throw new Error('Internal Server Error during page rendering'); // Throw generic error
     }
 }
 
-// --- Middleware (unchanged) ---
-// Serve favicon specifically
+
+/* ==================================
+ * Express Middleware Setup
+ * ================================== */
+
+// Serve Favicon
 app.use('/favicon.ico', express.static(path.join(PUBLIC_DIR, 'favicon.ico'), { fallthrough: false }));
 
-app.use('/style.css', express.static(path.join(PUBLIC_DIR, 'style.css'), { fallthrough: false }));
+// Serve the main Stylesheet using the configured filename
+app.use(`/${CSS_STYLESHEET}`, express.static(path.join(PUBLIC_DIR, CSS_STYLESHEET), { fallthrough: false }));
+
+// Serve static assets referenced relatively from Markdown (maps /assets/... to project root)
 app.use('/assets', express.static(__dirname, { fallthrough: false }));
 
 
-// --- Route Handlers ---
+/* ==================================
+ * Express Route Handlers
+ * ================================== */
 
-// Landing page route (unchanged)
+// --- Root Route (Landing Page) ---
 app.get('/', async (req, res) => {
     try {
         console.log(`Serving landing page: ${LANDING_PAGE_PATH}`);
@@ -259,111 +364,137 @@ app.get('/', async (req, res) => {
         res.send(finalHtml);
     } catch (error) {
          console.error(`Error serving landing page ${LANDING_PAGE_PATH}:`, error);
-         try { await fs.access(NOT_FOUND_PAGE_PATH); res.status(500).sendFile(NOT_FOUND_PAGE_PATH); }
-         catch (e404) { res.status(500).send('Internal Server Error and 404 page missing.'); }
+         // Attempt to send the custom 404 page even on landing page errors
+         try {
+             await fs.access(NOT_FOUND_PAGE_PATH);
+             res.status(500).sendFile(NOT_FOUND_PAGE_PATH);
+         } catch (e404) {
+             console.error("FATAL: 404.html page not found!");
+             res.status(500).send('Internal Server Error (and 404 page missing).');
+         }
     }
 });
 
-// *** UPDATED Generic route handler ***
+// --- Wildcard Route (Handles all other content requests) ---
 app.get('*', async (req, res) => {
     let reqPath = req.path;
 
-    // Normalize path: remove trailing slash unless it's the root
+    // Normalize path: remove trailing slash if present (and not the root)
     if (reqPath !== '/' && reqPath.endsWith('/')) {
         reqPath = reqPath.slice(0, -1);
     }
 
-    // 1. Check blacklist
+    // --- Security: Check Blacklist First ---
     if (isBlacklisted(reqPath)) {
         console.log(`Access denied (blacklist): ${reqPath}`);
         return res.status(404).sendFile(NOT_FOUND_PAGE_PATH);
     }
 
-    // 2. Check if the path corresponds to a directory within DATA_DIR
-    const relativePath = reqPath.substring(1); // e.g., 'blog' or 'tutorials/advanced'
+    // --- Check for Directory Request (Serve default.md) ---
+    const relativePath = reqPath.substring(1); // Path relative to DATA_DIR root
     const potentialDirPath = path.resolve(DATA_DIR, relativePath);
 
     try {
-        // Security check: Ensure resolved path is within DATA_DIR
+        // Security Check: Prevent access outside DATA_DIR for directory check
         if (!potentialDirPath.startsWith(DATA_DIR + path.sep) && potentialDirPath !== DATA_DIR) {
-            console.log(`Path escape attempt (directory check): ${reqPath}`);
+            console.log(`Path escape attempt prevented (directory check): ${reqPath}`);
             throw { code: 'ENOENT' }; // Treat as not found for security
         }
 
         const stats = await fs.stat(potentialDirPath);
 
         if (stats.isDirectory()) {
-            // It's a directory! Try to serve the category index file (default.md)
+            // Path is a directory, attempt to serve its mandatory index file
             const categoryIndexPath = path.join(potentialDirPath, CATEGORY_INDEX_FILE);
-            console.log(`Request for directory ${reqPath}. Attempting index: ${categoryIndexPath}`);
+            console.log(`Request for directory ${reqPath}. Attempting index: ${CATEGORY_INDEX_FILE}`);
 
             try {
+                // Render the default.md file for the category
                 const finalHtml = await renderMarkdownPage(categoryIndexPath, reqPath);
-                return res.send(finalHtml); // Serve the rendered default.md
+                return res.send(finalHtml);
             } catch (indexError) {
                 if (indexError.code === 'ENOENT') {
-                    console.log(`Index file '${CATEGORY_INDEX_FILE}' not found for directory ${reqPath} at ${categoryIndexPath}`);
-                    // Mandatory: If default.md is missing for a directory, it's a 404 for that directory path.
+                    // The MANDATORY default.md was not found
+                    console.error(`CRITICAL: Index file '${CATEGORY_INDEX_FILE}' not found for directory ${reqPath}. This file is mandatory.`);
                     return res.status(404).sendFile(NOT_FOUND_PAGE_PATH);
                 } else {
-                    // Error rendering an *existing* default.md
-                    console.error(`Error rendering index file ${categoryIndexPath}:`, indexError);
-                    // Display 404 page, but log as a server error
-                    return res.status(500).sendFile(NOT_FOUND_PAGE_PATH);
+                    // Error occurred while rendering an *existing* default.md
+                    console.error(`Error rendering mandatory index file ${categoryIndexPath}:`, indexError);
+                    return res.status(500).sendFile(NOT_FOUND_PAGE_PATH); // Internal server error
                 }
             }
         }
-        // If it's not a directory, fall through to standard file handling below...
+        // If it's not a directory, continue below to treat as a file request...
     } catch (err) {
-        // fs.stat failed (path likely doesn't exist as a directory *or* file)
-        // or security check threw ENOENT. This is expected for '/blog/post1' type requests.
-        // No direct action needed here, just proceed to check for the .md file.
+        // fs.stat failed, likely means path doesn't exist as dir. Expected for file requests.
         if (err.code !== 'ENOENT') {
-           console.error(`Unexpected error checking path ${potentialDirPath}:`, err); // Log other fs errors
+           console.error(`Unexpected error checking path stats for ${potentialDirPath}:`, err);
         }
+        // Proceed to check for the corresponding .md file
     }
 
-    // 3. Standard file handling: Assume it's a request for a specific .md file
+    // --- Standard File Request (Serve specific .md file) ---
     const mdFilePath = path.resolve(DATA_DIR, relativePath + '.md');
 
-    // Security check: Ensure resolved .md path is within DATA_DIR
+    // Security Check: Prevent access outside DATA_DIR for file check
      if (!mdFilePath.startsWith(DATA_DIR + path.sep)) {
-         console.log(`Path escape attempt (file check): ${reqPath}`);
+         console.log(`Path escape attempt prevented (file check): ${reqPath}`);
          return res.status(404).sendFile(NOT_FOUND_PAGE_PATH);
      }
 
+    // --- Attempt to Render the Specific Markdown File ---
     try {
-        console.log(`Attempting standard Markdown file: ${mdFilePath}`);
+        console.log(`Attempting to serve standard Markdown file: ${mdFilePath}`);
         const finalHtml = await renderMarkdownPage(mdFilePath, reqPath);
         res.send(finalHtml);
     } catch (error) {
-        // Handle errors from rendering the standard .md file
+        // Handle errors from renderMarkdownPage specifically
         if (error.code === 'ENOENT') {
+            // The requested .md file itself wasn't found
             console.log(`Markdown file not found for ${reqPath} at ${mdFilePath}`);
             res.status(404).sendFile(NOT_FOUND_PAGE_PATH);
         } else {
-            console.error(`Error rendering standard file ${mdFilePath}:`, error);
+            // Other error during rendering (already logged inside renderMarkdownPage)
+            console.error(`Unhandled error rendering standard file ${mdFilePath}. Check logs.`);
             res.status(500).sendFile(NOT_FOUND_PAGE_PATH);
         }
     }
 });
 
 
-// --- Server Start (unchanged) ---
+/* ==================================
+ * Server Initialization
+ * ================================== */
+
+// Load blacklist first, then ensure 404 page exists, then start listening
 loadBlacklist().then(() => {
     fs.access(NOT_FOUND_PAGE_PATH)
         .then(() => {
             app.listen(PORT, () => {
-                console.log(`Server listening on http://localhost:${PORT}`);
-                // ... (rest of the startup logs)
-                 console.log(`Category index file: '${CATEGORY_INDEX_FILE}'`);
+                console.log("===============================================");
+                console.log(`Markdown Server Started`);
+                console.log(`Listening on: http://localhost:${PORT}`);
+                console.log(`Content Root: ${DATA_DIR}`);
+                console.log(`Templates:    ${TEMPLATE_DIR}`);
+                console.log(`Public Dir:   ${PUBLIC_DIR}`);
+                console.log(`Stylesheet:   /${CSS_STYLESHEET}`);
+                console.log(`Blacklist:    ${BLACKLIST_PATH}`);
+                console.log(`404 Page:     ${NOT_FOUND_PAGE_PATH}`);
+                console.log("Using 'marked-highlight' with 'highlight.js' engine.");
+                console.log("===============================================");
             });
         })
-        .catch(err => {
-             console.error(`FATAL: Custom 404 page not found at ${NOT_FOUND_PAGE_PATH}.`);
-             process.exit(1);
+        .catch(_ => {
+             // Handle case where 404 page itself is missing
+             console.error(`\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!`);
+             console.error(`FATAL ERROR: Custom 404 page not found at:`);
+             console.error(NOT_FOUND_PAGE_PATH);
+             console.error(`Please create this file before starting the server.`);
+             console.error(`!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n`);
+             process.exit(1); // Exit if 404 page is crucial and missing
         });
 }).catch(error => {
-    console.error("Failed to initialize server:", error);
+    // Handle errors during initial blacklist loading
+    console.error("FATAL ERROR during server initialization:", error);
     process.exit(1);
 });

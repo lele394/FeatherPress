@@ -14,4 +14,10 @@ $$
 x(t)
 $$
 
-!{{custom}{ "name": "Parameter 1 ", "p2": "parameter2" }}
+
+```python
+def y():
+    return
+```
+
+{!{custom}{ "name": "Parameter 1 ", "p2": "parameter2" }}
