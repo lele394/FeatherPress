@@ -320,7 +320,7 @@ async function renderMarkdownPage(markdownFilePath, reqPath) {
 </head>
 <body>
     <div class="container">
-        ${htmlContent} {/* Inject the parsed Markdown content */}
+        ${htmlContent} 
     </div>
 </body>
 </html>`;
